@@ -38,6 +38,7 @@ tf.app.flags.DEFINE_string("worker_hosts", '', "Comma-separated list of hostname
 tf.app.flags.DEFINE_string("job_name", '', "One of 'ps', 'worker'")
 tf.app.flags.DEFINE_integer("task_index", 0, "Index of task within the job")
 tf.app.flags.DEFINE_integer("num_threads", 16, "Number of threads")
+tf.app.flags.DEFINE_string("gpu_indices", "", "gpu card indices")
 tf.app.flags.DEFINE_integer("feature_size", 0, "Number of features")
 tf.app.flags.DEFINE_integer("field_size", 0, "Number of fields")
 tf.app.flags.DEFINE_integer("embedding_size", 32, "Embedding size")
@@ -90,7 +91,8 @@ def input_fn(filenames, batch_size=32, num_epochs=1, perform_shuffle=False):
     # epochs from blending together.
     dataset = dataset.repeat(num_epochs)
     dataset = dataset.batch(batch_size) # Batch size to use
-
+    
+    return dataset
     #return dataset.make_one_shot_iterator()
     iterator = dataset.make_one_shot_iterator()
     batch_features, batch_labels = iterator.get_next()
@@ -336,8 +338,19 @@ def main(_):
         "deep_layers": FLAGS.deep_layers,
         "dropout": FLAGS.dropout
     }
-    config = tf.estimator.RunConfig().replace(session_config = tf.ConfigProto(device_count={'GPU':0, 'CPU':FLAGS.num_threads}),
+    config = tf.estimator.RunConfig().replace(session_config = tf.ConfigProto(device_count={'CPU':FLAGS.num_threads}),
             log_step_count_steps=FLAGS.log_steps, save_summary_steps=FLAGS.log_steps)
+    #strategy = tf.contrib.distribute.OneDeviceStrategy(device='/gpu:0')
+    if len(FLAGS.gpu_indices) > 0 :
+      gpus = FLAGS.gpu_indices.split(",")
+      gpu_list = []
+      for gpu in gpus:
+        gpu_list.append('/device:GPU:' + gpu)
+      print(gpu_list)
+      strategy = tf.contrib.distribute.MirroredStrategy(gpu_list)
+      config = tf.estimator.RunConfig(train_distribute=strategy).replace(
+				log_step_count_steps=FLAGS.log_steps, save_summary_steps=FLAGS.log_steps)
+    
     DeepFM = tf.estimator.Estimator(model_fn=model_fn, model_dir=FLAGS.model_dir, params=model_params, config=config)
 
     if FLAGS.task_type == 'train':
